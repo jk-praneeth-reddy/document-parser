@@ -3,18 +3,50 @@ import { PencilIcon, SaveIcon, XIcon } from 'lucide-react'
 import JsonViewer, { type Fields, type FieldEntry } from './JsonViewer'
 import api from '../utils/api'
 
+type ViewMode = 'table' | 'json'
+
 interface FieldsPanelProps {
   historyId: string
   documentType: string
   language: string | null
   fields: Fields
-  /** If false, hides edit button (read-only mode for history detail) */
   editable?: boolean
   onFieldsSaved?: () => void
 }
 
 function formatDocType(s: string): string {
   return s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
+function ViewToggle({ mode, onChange }: { mode: ViewMode; onChange: (m: ViewMode) => void }) {
+  return (
+    <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-0.5">
+      {(['table', 'json'] as ViewMode[]).map((m) => (
+        <button
+          key={m}
+          onClick={() => onChange(m)}
+          className={`flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded-md transition-all capitalize
+            ${mode === m
+              ? 'bg-white text-gray-900 shadow-sm border border-gray-200'
+              : 'text-gray-500 hover:text-gray-700'
+            }`}
+        >
+          {m === 'table' ? (
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M3 10h18M3 14h18M10 3v18M14 3v18M3 6a3 3 0 013-3h12a3 3 0 013 3v12a3 3 0 01-3 3H6a3 3 0 01-3-3V6z" />
+            </svg>
+          ) : (
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+            </svg>
+          )}
+          {m}
+        </button>
+      ))}
+    </div>
+  )
 }
 
 export function FieldsPanel({
@@ -26,17 +58,20 @@ export function FieldsPanel({
   onFieldsSaved,
 }: FieldsPanelProps) {
   const [editMode, setEditMode] = useState(false)
+  const [viewMode, setViewMode] = useState<ViewMode>('table')
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
-  const [threshold, setThreshold] = useState(0)
+  // Local copy of fields so updates are reflected immediately after save
+  const [localFields, setLocalFields] = useState<Fields>(structuredClone(fields))
 
   const editedRef = useRef<Fields>(structuredClone(fields))
 
   useEffect(() => {
-    editedRef.current = structuredClone(fields)
+    const copy = structuredClone(fields)
+    setLocalFields(copy)
+    editedRef.current = copy
     setEditMode(false)
     setSaveError(null)
-    setThreshold(0)
   }, [historyId])
 
   const handleFieldChange = (key: string, newValue: string) => {
@@ -52,6 +87,7 @@ export function FieldsPanel({
     setSaveError(null)
     try {
       await api.patch(`/ocr/history/${historyId}`, { fields: editedRef.current })
+      setLocalFields(structuredClone(editedRef.current))
       setEditMode(false)
       onFieldsSaved?.()
     } catch {
@@ -69,8 +105,9 @@ export function FieldsPanel({
 
   return (
     <div className="flex flex-col h-full">
-      {/* Doc type + language */}
-      <div className="flex items-center gap-2 flex-wrap mb-4">
+      {/* Single header row: badges · toggle · edit */}
+      <div className="flex items-center gap-2 flex-wrap pb-4 border-b border-gray-100 mb-4">
+        {/* Doc type + language */}
         <span className="inline-flex items-center px-3 py-1 bg-indigo-100 text-indigo-700 text-xs font-semibold rounded-full">
           {formatDocType(documentType)}
         </span>
@@ -79,31 +116,13 @@ export function FieldsPanel({
             {language}
           </span>
         )}
-      </div>
 
-      {/* Controls */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-stretch sm:gap-4 pb-4 border-b border-gray-100 mb-4">
-        <div className="w-full sm:flex-1 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
-          <div className="flex items-center gap-3 min-h-[2rem]">
-            <span className="text-xs font-medium text-gray-600 shrink-0">Min confidence</span>
-            <input
-              type="range"
-              min={0}
-              max={100}
-              value={Math.round(threshold * 100)}
-              onChange={(e) => setThreshold(Number(e.target.value) / 100)}
-              className="flex-1 h-2 accent-gray-700 cursor-pointer min-w-0"
-            />
-            <span className="text-xs font-medium text-gray-700 w-10 text-right tabular-nums shrink-0">
-              {Math.round(threshold * 100)}%
-            </span>
-          </div>
-        </div>
+        {/* Push toggle + edit to the right */}
+        <div className="flex items-center gap-2 ml-auto">
+          <ViewToggle mode={viewMode} onChange={setViewMode} />
 
-        {/* Edit / Save / Cancel */}
-        {editable && (
-          <div className="flex items-center gap-2 sm:shrink-0">
-            {editMode ? (
+          {editable && (
+            editMode ? (
               <>
                 <button
                   onClick={handleSave}
@@ -130,20 +149,20 @@ export function FieldsPanel({
                 <PencilIcon className="w-3.5 h-3.5" />
                 Edit
               </button>
-            )}
-          </div>
-        )}
+            )
+          )}
+        </div>
       </div>
 
       {saveError && (
         <p className="text-xs text-red-500 font-medium mb-3">{saveError}</p>
       )}
 
-      {/* Fields viewer — scrollable */}
+      {/* Fields viewer */}
       <div className="flex-1 overflow-auto">
         <JsonViewer
-          data={editMode ? editedRef.current : fields}
-          confidenceThreshold={threshold}
+          data={editMode ? editedRef.current : localFields}
+          viewMode={viewMode}
           editMode={editMode}
           onFieldChange={handleFieldChange}
         />

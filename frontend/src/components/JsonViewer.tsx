@@ -1,5 +1,3 @@
-import { useState } from 'react'
-
 export interface FieldEntry {
   value: unknown
   confidence: number
@@ -9,12 +7,10 @@ export type Fields = Record<string, FieldEntry>
 
 interface Props {
   data: unknown
-  confidenceThreshold?: number
+  viewMode?: 'table' | 'json'
   editMode?: boolean
   onFieldChange?: (key: string, newValue: string) => void
 }
-
-type ViewMode = 'table' | 'json'
 
 function isFieldEntry(v: unknown): v is FieldEntry {
   return (
@@ -26,7 +22,7 @@ function isFieldEntry(v: unknown): v is FieldEntry {
   )
 }
 
-function isFieldsObject(data: unknown): data is Fields {
+export function isFieldsObject(data: unknown): data is Fields {
   if (typeof data !== 'object' || data === null || Array.isArray(data)) return false
   const entries = Object.values(data as object)
   return entries.length > 0 && entries.every(isFieldEntry)
@@ -64,7 +60,7 @@ function ValueCell({
         type="text"
         defaultValue={displayVal}
         onBlur={(e) => onFieldChange?.(fieldKey, e.target.value)}
-        className="w-full border border-gray-300 rounded-md px-2 py-1 text-sm text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-gray-400"
+        className="w-full border border-indigo-300 rounded-md px-2 py-1 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-indigo-50"
         onClick={(e) => e.stopPropagation()}
       />
     )
@@ -140,7 +136,7 @@ function FieldsTable({
         <tbody className="divide-y divide-gray-100">
           {Object.entries(fields).map(([key, entry]) => (
             <tr key={key} className="hover:bg-gray-50 transition-colors">
-              <td className="px-4 py-3 font-mono text-xs text-gray-600 align-top">
+              <td className="px-4 py-3 font-mono text-xs text-indigo-700 font-medium align-top">
                 {key}
               </td>
               <td className="px-4 py-3 text-gray-800 align-top max-w-xs">
@@ -153,15 +149,13 @@ function FieldsTable({
               </td>
               <td className="px-4 py-3 align-top">
                 <div className="flex items-center gap-2">
-                  <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden min-w-[48px]">
+                  <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden min-w-[48px]">
                     <div
                       className={`h-full rounded-full transition-all ${confidenceColor(entry.confidence)}`}
                       style={{ width: `${Math.round(entry.confidence * 100)}%` }}
                     />
                   </div>
-                  <span
-                    className={`text-xs font-medium tabular-nums whitespace-nowrap ${confidenceTextColor(entry.confidence)}`}
-                  >
+                  <span className={`text-xs font-medium whitespace-nowrap ${confidenceTextColor(entry.confidence)}`}>
                     {Math.round(entry.confidence * 100)}%
                   </span>
                 </div>
@@ -179,12 +173,12 @@ function highlight(json: string): string {
     /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+-]?\d+)?)/g,
     (match) => {
       if (/^"/.test(match)) {
-        if (/:$/.test(match)) return `<span class="text-gray-400">${match}</span>`
-        return `<span class="text-gray-200">${match}</span>`
+        if (/:$/.test(match)) return `<span class="text-indigo-400 font-medium">${match}</span>`
+        return `<span class="text-emerald-400">${match}</span>`
       }
-      if (/true|false/.test(match)) return `<span class="text-gray-500">${match}</span>`
+      if (/true|false/.test(match)) return `<span class="text-amber-400">${match}</span>`
       if (/null/.test(match)) return `<span class="text-gray-500">${match}</span>`
-      return `<span class="text-gray-300">${match}</span>`
+      return `<span class="text-sky-400">${match}</span>`
     }
   )
 }
@@ -210,84 +204,25 @@ function RawJson({ data }: { data: unknown }) {
   )
 }
 
-function ViewToggle({ mode, onChange }: { mode: ViewMode; onChange: (m: ViewMode) => void }) {
-  return (
-    <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-0.5">
-      {(['table', 'json'] as ViewMode[]).map((m) => (
-        <button
-          key={m}
-          onClick={() => onChange(m)}
-          className={`flex items-center gap-1.5 px-3 py-1 text-xs font-medium rounded-md transition-all capitalize
-            ${mode === m
-              ? 'bg-white text-gray-900 shadow-sm border border-gray-200'
-              : 'text-gray-500 hover:text-gray-700'
-            }`}
-        >
-          {m === 'table' ? (
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M3 10h18M3 14h18M10 3v18M14 3v18M3 6a3 3 0 013-3h12a3 3 0 013 3v12a3 3 0 01-3 3H6a3 3 0 01-3-3V6z" />
-            </svg>
-          ) : (
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
-            </svg>
-          )}
-          {m}
-        </button>
-      ))}
-    </div>
-  )
-}
-
 export default function JsonViewer({
   data,
-  confidenceThreshold = 0,
+  viewMode = 'table',
   editMode = false,
   onFieldChange,
 }: Props) {
-  const [mode, setMode] = useState<ViewMode>('table')
   const hasFields = isFieldsObject(data)
 
-  // Apply confidence filter
-  const filteredData: unknown = hasFields
-    ? Object.fromEntries(
-        Object.entries(data as Fields).filter(
-          ([, entry]) => entry.confidence >= confidenceThreshold
-        )
-      )
-    : data
+  if (!hasFields) {
+    return <RawJson data={data} />
+  }
 
-  const filteredHasFields = isFieldsObject(filteredData)
-  const filteredCount = hasFields
-    ? Object.keys(data as Fields).length - Object.keys(filteredData as object).length
-    : 0
-
-  return (
-    <div className="space-y-3">
-      {hasFields && (
-        <div className="flex items-center justify-between">
-          {filteredCount > 0 && (
-            <span className="text-xs text-gray-400">
-              {filteredCount} field{filteredCount !== 1 ? 's' : ''} hidden by confidence filter
-            </span>
-          )}
-          <div className={filteredCount > 0 ? '' : 'ml-auto'}>
-            <ViewToggle mode={mode} onChange={setMode} />
-          </div>
-        </div>
-      )}
-
-      {filteredHasFields && mode === 'table' ? (
-        <FieldsTable
-          fields={filteredData as Fields}
-          editMode={editMode}
-          onFieldChange={onFieldChange}
-        />
-      ) : (
-        <RawJson data={filteredData} />
-      )}
-    </div>
+  return viewMode === 'table' ? (
+    <FieldsTable
+      fields={data as Fields}
+      editMode={editMode}
+      onFieldChange={onFieldChange}
+    />
+  ) : (
+    <RawJson data={data} />
   )
 }
