@@ -405,14 +405,8 @@ export function ExceptionState({
                       }}
                       onMouseEnter={() => setHoveredIssue(issue.id)}
                       onMouseLeave={() => setHoveredIssue(null)}
-                      className={`p-4 rounded-xl border transition-all ${sc.bg} ${sc.border} ${hoveredIssue === issue.id ? 'shadow-md ring-1 ring-opacity-20' : ''}`}
-                      style={
-                      hoveredIssue === issue.id ?
-                      {
-                        ringColor: sc.dot
-                      } :
-                      {}
-                      }>
+                      className={`p-4 rounded-xl border transition-all ${sc.bg} ${sc.border} ${hoveredIssue === issue.id ? 'shadow-md ring-1 ring-gray-400/25' : ''}`}
+                    >
                       
                       <div className="flex items-start gap-3">
                         <div

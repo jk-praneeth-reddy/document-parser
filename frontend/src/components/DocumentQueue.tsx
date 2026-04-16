@@ -474,7 +474,7 @@ export function DocumentQueue({
   const selectedDoc = documents.find((d) => d.id === selectedId) || documents[0];
   // Simulate status progression
   useEffect(() => {
-    const timers: NodeJS.Timeout[] = [];
+    const timers: ReturnType<typeof setTimeout>[] = [];
     // Passport: uploading → queued
     timers.push(
       setTimeout(() => {
