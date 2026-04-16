@@ -282,12 +282,16 @@ export async function extractFromFile(
   const extraGuidance = await buildCorrectionsGuidance();
 
   if (isPdf(mimeType, fileName)) {
-    const { pdf } = await import("pdf-to-img");
-    const document = await pdf(buffer, { scale: 2 });
+    const { pdfToPng } = await import("pdf-to-png-converter");
+    const pngPages = await pdfToPng(buffer, {
+      viewportScale: 2,
+    });
     const pageBuffers: Uint8Array[] = [];
 
-    for await (const pageBuffer of document) {
-      pageBuffers.push(new Uint8Array(pageBuffer));
+    for (const page of pngPages) {
+      if (page.content?.length) {
+        pageBuffers.push(new Uint8Array(page.content));
+      }
     }
 
     if (pageBuffers.length === 0)
