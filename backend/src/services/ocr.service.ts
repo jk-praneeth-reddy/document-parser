@@ -31,7 +31,12 @@ Rules:
 3. Numeric fields (amounts, totals) must be numbers, not strings.
 4. Dates should be normalised to YYYY-MM-DD where possible; otherwise return the raw string.
 5. Do not add explanations, comments, or any keys outside the three required ones.
-6. Output must be strictly valid JSON.`;
+6. Output must be strictly valid JSON.
+7. For tabular or repeating data (e.g. invoice line items, bank statement transactions),
+   always use a row-oriented array of objects where each object contains all columns for
+   that row. NEVER split columns into separate parallel arrays.
+   Correct:   "items": [{"description":"Widget","quantity":2,"unitPrice":50,"amount":100}]
+   Incorrect: "description":["Widget"], "quantity":[2], "unitPrice":[50], "amount":[100]`;
 
 export interface OcrResult {
   documentType: string | null;
@@ -107,20 +112,40 @@ function isPdf(mimeType: string, fileName?: string): boolean {
   );
 }
 
+const BATCH_SIZE = 5;
+
+async function processInBatches(pageBuffers: Uint8Array[]): Promise<OcrResult[]> {
+  const results: OcrResult[] = [];
+
+  for (let i = 0; i < pageBuffers.length; i += BATCH_SIZE) {
+    const batch = pageBuffers.slice(i, i + BATCH_SIZE);
+    const batchResults = await Promise.all(
+      batch.map(async (buf) => {
+        const base64 = await toBase64Jpeg(buf);
+        return ocrPage(base64);
+      })
+    );
+    results.push(...batchResults);
+  }
+
+  return results;
+}
+
 export async function extractFromFile(filePath: string, mimeType: string, fileName?: string): Promise<OcrResult> {
   const buffer = fs.readFileSync(filePath);
 
   if (isPdf(mimeType, fileName)) {
     const { pdf } = await import("pdf-to-img");
     const document = await pdf(buffer, { scale: 2 });
-    const pageResults: OcrResult[] = [];
+    const pageBuffers: Uint8Array[] = [];
 
     for await (const pageBuffer of document) {
-      const base64 = await toBase64Jpeg(new Uint8Array(pageBuffer));
-      pageResults.push(await ocrPage(base64));
+      pageBuffers.push(new Uint8Array(pageBuffer));
     }
 
-    if (pageResults.length === 0) throw new Error("PDF produced no renderable pages");
+    if (pageBuffers.length === 0) throw new Error("PDF produced no renderable pages");
+
+    const pageResults = await processInBatches(pageBuffers);
     return mergeResults(pageResults);
   }
 
