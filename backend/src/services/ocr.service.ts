@@ -91,22 +91,12 @@ export interface OcrResult {
   fields: Record<string, FieldEntry>;
 }
 
-/** Linear scale before Vision API: 0.25 ⇒ ~25% width & height (~6.25% area). */
-const VISION_IMAGE_SCALE = 0.25;
-
 async function toBase64Jpeg(input: Buffer | Uint8Array): Promise<string> {
-  const raw = Buffer.from(input);
-  const meta = await sharp(raw).metadata();
-  const w = meta.width;
-  let pipeline = sharp(raw);
-  if (w != null && w > 0) {
-    const targetW = Math.max(1, Math.round(w * VISION_IMAGE_SCALE));
-    pipeline = pipeline.resize({ width: targetW, withoutEnlargement: true });
-  } else {
-    const fallbackW = Math.max(1, Math.round(1300 * VISION_IMAGE_SCALE));
-    pipeline = pipeline.resize({ width: fallbackW, withoutEnlargement: true });
-  }
-  const buf = await pipeline.jpeg({ quality: 80 }).toBuffer();
+  const buf = await sharp(Buffer.from(input))
+    .resize({ width: 1300, withoutEnlargement: true })
+    .jpeg({ quality: 80 })
+    .toBuffer();
+
   return buf.toString("base64");
 }
 
