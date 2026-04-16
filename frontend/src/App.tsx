@@ -1,164 +1,128 @@
 import { useState } from 'react'
-import { AnimatePresence } from 'framer-motion'
-import { Navbar } from './components/Navbar'
-import { HeroSection } from './components/HeroSection'
-import { UploadCard } from './components/UploadCard'
-import { TrustIndicators } from './components/TrustIndicators'
-import { BackgroundDecoration } from './components/BackgroundDecoration'
-import { CameraCapture } from './components/CameraCapture'
-import { DocumentQueue } from './components/DocumentQueue'
-import { AIProcessing } from './components/AIProcessing'
-import { InvoiceWorkspace } from './components/InvoiceWorkspace'
-import { KYCWorkspace } from './components/KYCWorkspace'
-import { FinancialWorkspace } from './components/FinancialWorkspace'
-import { ReviewMode } from './components/ReviewMode'
-import { ExceptionState } from './components/ExceptionState'
-import { ExportScreen } from './components/ExportScreen'
+import { Sidebar, type Page } from './components/Sidebar'
+import { HomePage } from './pages/HomePage'
+import { ResultsPage } from './pages/ResultsPage'
+import { ParserPage } from './pages/ParserPage'
+import { HistoryPage, type HistoryEntry } from './pages/HistoryPage'
+import { HistoryDetailPage } from './pages/HistoryDetailPage'
+import type { Fields } from './components/JsonViewer'
+import api from './utils/api'
 
-interface CapturedFile {
-  name: string
-  size: string
-  type: string
+interface ExtractResult {
+  historyId: string
+  file: {
+    originalName: string
+    savedAs: string
+    mimeType: string
+    size: number
+  }
+  documentType: string
+  language: string | null
+  fields: Fields
 }
 
-type Screen =
-  | 'landing'
-  | 'camera'
-  | 'processing'
-  | 'queue'
-  | 'workspace'
-  | 'kyc-workspace'
-  | 'financial-workspace'
-  | 'review'
-  | 'exception'
-  | 'export'
-
 export default function App() {
-  const [screen, setScreen] = useState<Screen>('landing')
-  const [capturedFile, setCapturedFile] = useState<CapturedFile | null>(null)
+  const [page, setPage] = useState<Page>('home')
+  const [isExtracting, setIsExtracting] = useState(false)
+  const [extractError, setExtractError] = useState<string | null>(null)
 
-  const go = (s: Screen) => () => setScreen(s)
+  // Results state
+  const [currentFile, setCurrentFile] = useState<File | null>(null)
+  const [extractResult, setExtractResult] = useState<ExtractResult | null>(null)
 
-  const handleCameraCapture = () => {
-    setCapturedFile({
-      name: 'camera_capture.jpg',
-      size: '1.2 MB',
-      type: 'image/jpeg',
-    })
-    setScreen('landing')
+  // History detail state
+  const [selectedEntry, setSelectedEntry] = useState<HistoryEntry | null>(null)
+
+  // Trigger history re-fetch
+  const [historyRefreshKey, setHistoryRefreshKey] = useState(0)
+  const refreshHistory = () => setHistoryRefreshKey((k) => k + 1)
+
+  const handleExtract = async (file: File) => {
+    setIsExtracting(true)
+    setExtractError(null)
+    setCurrentFile(file)
+
+    const form = new FormData()
+    form.append('file', file)
+
+    try {
+      const res = await api.post<ExtractResult>('/ocr/extract', form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      setExtractResult(res.data)
+      setPage('results')
+      refreshHistory()
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { error?: string } } }
+      setExtractError(axiosErr.response?.data?.error ?? 'Network error — is the backend running?')
+    } finally {
+      setIsExtracting(false)
+    }
   }
 
-  const handleBackToLanding = () => {
-    setCapturedFile(null)
-    setScreen('landing')
+  const handleViewDetail = (entry: HistoryEntry) => {
+    setSelectedEntry(entry)
+    setPage('history-detail')
   }
 
-  // TODO: Replace demo handlers with real backend API calls
-  // import api from './utils/api'
-  // const handleUpload = async (file: File) => {
-  //   const formData = new FormData()
-  //   formData.append('document', file)
-  //   const res = await api.post('/documents/upload', formData)
-  //   return res.data
-  // }
+  const handleNavigate = (p: Page) => {
+    // Don't allow direct nav to results/history-detail via sidebar
+    if (p === 'results' || p === 'history-detail') return
+    setPage(p)
+  }
 
   return (
-    <div className="w-full min-h-screen bg-[#FAFAFA] relative">
-      <AnimatePresence mode="wait">
-        {screen === 'camera' ? (
-          <CameraCapture
-            key="camera"
-            onClose={go('landing')}
-            onCapture={handleCameraCapture}
-          />
-        ) : screen === 'processing' ? (
-          <div key="processing" className="w-full min-h-screen flex flex-col">
-            <Navbar />
-            <div className="flex-1">
-              <AIProcessing onComplete={go('queue')} />
-            </div>
-          </div>
-        ) : screen === 'workspace' ? (
-          <div key="workspace" className="w-full h-screen flex flex-col">
-            <Navbar />
-            <div className="flex-1 overflow-hidden">
-              <InvoiceWorkspace onBack={go('queue')} />
-            </div>
-          </div>
-        ) : screen === 'kyc-workspace' ? (
-          <div key="kyc-workspace" className="w-full h-screen flex flex-col">
-            <Navbar />
-            <div className="flex-1 overflow-hidden">
-              <KYCWorkspace onBack={go('queue')} />
-            </div>
-          </div>
-        ) : screen === 'financial-workspace' ? (
-          <div
-            key="financial-workspace"
-            className="w-full h-screen flex flex-col"
-          >
-            <Navbar />
-            <div className="flex-1 overflow-hidden">
-              <FinancialWorkspace onBack={go('queue')} />
-            </div>
-          </div>
-        ) : screen === 'review' ? (
-          <div key="review" className="w-full h-screen flex flex-col">
-            <Navbar />
-            <div className="flex-1 overflow-hidden">
-              <ReviewMode onBack={go('queue')} onComplete={go('export')} />
-            </div>
-          </div>
-        ) : screen === 'exception' ? (
-          <div key="exception" className="w-full h-screen flex flex-col">
-            <Navbar />
-            <div className="flex-1 overflow-hidden">
-              <ExceptionState
-                onBack={go('queue')}
-                onRetake={() => setScreen('camera')}
-                onReupload={handleBackToLanding}
-              />
-            </div>
-          </div>
-        ) : screen === 'export' ? (
-          <div key="export" className="w-full h-screen flex flex-col">
-            <Navbar />
-            <div className="flex-1 overflow-hidden">
-              <ExportScreen onBack={go('queue')} onDone={handleBackToLanding} />
-            </div>
-          </div>
-        ) : screen === 'queue' ? (
-          <div key="queue" className="w-full min-h-screen flex flex-col">
-            <Navbar />
-            <div className="flex-1">
-              <DocumentQueue
-                onBack={handleBackToLanding}
-                onOpenWorkspace={go('workspace')}
-                onOpenKYCWorkspace={go('kyc-workspace')}
-                onOpenFinancialWorkspace={go('financial-workspace')}
-                onOpenReview={go('review')}
-                onOpenException={go('exception')}
-              />
-            </div>
-          </div>
-        ) : (
-          <div key="landing" className="w-full min-h-screen">
-            <BackgroundDecoration />
-            <Navbar />
-            <main className="relative z-10 pt-16 md:pt-24 pb-20">
-              <HeroSection />
-              <div className="mt-10 md:mt-12">
-                <UploadCard
-                  onCameraClick={go('camera')}
-                  onViewExtractedData={go('processing')}
-                  initialUpload={capturedFile}
-                />
+    <div className="flex h-screen overflow-hidden bg-gray-50">
+      <Sidebar activePage={page} onNavigate={handleNavigate} />
+
+      <div className="flex-1 overflow-auto">
+        {/* Home page */}
+        {page === 'home' && (
+          <div>
+            <HomePage onExtract={handleExtract} isExtracting={isExtracting} />
+            {extractError && (
+              <div className="max-w-2xl mx-auto px-6 pb-6">
+                <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+                  <p className="text-sm text-red-600 font-medium">{extractError}</p>
+                </div>
               </div>
-              <TrustIndicators />
-            </main>
+            )}
           </div>
         )}
-      </AnimatePresence>
+
+        {/* Results page — after extraction */}
+        {page === 'results' && extractResult && currentFile && (
+          <ResultsPage
+            file={currentFile}
+            historyId={extractResult.historyId}
+            documentType={extractResult.documentType}
+            language={extractResult.language}
+            fields={extractResult.fields}
+            onBack={() => setPage('home')}
+            onFieldsSaved={refreshHistory}
+          />
+        )}
+
+        {/* Parser page */}
+        {page === 'parser' && <ParserPage />}
+
+        {/* History list */}
+        {page === 'history' && (
+          <HistoryPage
+            refreshKey={historyRefreshKey}
+            onViewDetail={handleViewDetail}
+          />
+        )}
+
+        {/* History detail */}
+        {page === 'history-detail' && selectedEntry && (
+          <HistoryDetailPage
+            entry={selectedEntry}
+            onBack={() => setPage('history')}
+            onFieldsSaved={refreshHistory}
+          />
+        )}
+      </div>
     </div>
   )
 }

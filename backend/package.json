@@ -12,13 +12,15 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
+    "@types/sql.js": "^1.4.11",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "multer": "^2.1.1",
     "openai": "^6.34.0",
     "pdf-to-img": "^4.5.0",
-    "sharp": "^0.32.6"
+    "sharp": "^0.32.6",
+    "sql.js": "^1.14.1"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",

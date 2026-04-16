@@ -34,3 +34,6 @@ frontend/.vite/
 
 # Uploaded files
 backend/uploads/
+
+# SQLite history database
+backend/data/
