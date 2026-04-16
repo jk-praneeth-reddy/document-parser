@@ -36,7 +36,6 @@ export function ResultPanel({ result, onFieldsSaved }: ResultPanelProps) {
   const [editMode, setEditMode] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
-  const [threshold, setThreshold] = useState(0)
 
   // Keep a mutable ref copy of edited fields so we don't re-render on every keystroke
   const editedFieldsRef = useRef<Fields>(structuredClone(result.fields))
@@ -46,7 +45,6 @@ export function ResultPanel({ result, onFieldsSaved }: ResultPanelProps) {
     editedFieldsRef.current = structuredClone(result.fields)
     setEditMode(false)
     setSaveError(null)
-    setThreshold(0)
   }, [result.historyId])
 
   const handleFieldChange = (key: string, newValue: string) => {
@@ -109,24 +107,7 @@ export function ResultPanel({ result, onFieldsSaved }: ResultPanelProps) {
         </div>
 
         {/* Controls row */}
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-stretch sm:justify-between sm:gap-4">
-          <div className="w-full sm:flex-1 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
-            <div className="flex items-center gap-3 min-h-[2rem]">
-              <span className="text-xs font-medium text-gray-600 shrink-0">Min confidence</span>
-              <input
-                type="range"
-                min={0}
-                max={100}
-                value={Math.round(threshold * 100)}
-                onChange={(e) => setThreshold(Number(e.target.value) / 100)}
-                className="flex-1 h-2 accent-gray-700 cursor-pointer min-w-0"
-              />
-              <span className="text-xs font-medium text-gray-700 w-10 text-right tabular-nums shrink-0">
-                {Math.round(threshold * 100)}%
-              </span>
-            </div>
-          </div>
-
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-stretch sm:justify-end sm:gap-4">
           {/* Edit / Save / Cancel */}
           <div className="flex items-center gap-2 sm:shrink-0">
             {editMode ? (
@@ -167,7 +148,6 @@ export function ResultPanel({ result, onFieldsSaved }: ResultPanelProps) {
         {/* Fields viewer */}
         <JsonViewer
           data={editMode ? editedFieldsRef.current : result.fields}
-          confidenceThreshold={threshold}
           editMode={editMode}
           onFieldChange={handleFieldChange}
         />

@@ -40,7 +40,7 @@ const item = {
     y: 0,
     transition: {
       duration: 0.4,
-      ease: 'easeOut'
+      ease: [0.42, 0, 0.58, 1] as const
     }
   }
 };

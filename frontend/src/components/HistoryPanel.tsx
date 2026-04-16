@@ -34,7 +34,6 @@ export function HistoryPanel({ refreshKey }: HistoryPanelProps) {
   const [history, setHistory] = useState<HistoryEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [expandedId, setExpandedId] = useState<string | null>(null)
-  const [threshold, setThreshold] = useState(0)
 
   useEffect(() => {
     setLoading(true)
@@ -135,30 +134,8 @@ export function HistoryPanel({ refreshKey }: HistoryPanelProps) {
                     <span className="self-center">{new Date(entry.extractedAt).toLocaleString()}</span>
                   </div>
 
-                  {/* Confidence slider for history view */}
-                  <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
-                    <div className="flex items-center gap-3 min-h-[2rem]">
-                      <span className="text-xs font-medium text-gray-600 shrink-0">Min confidence</span>
-                      <input
-                        type="range"
-                        min={0}
-                        max={100}
-                        value={Math.round(threshold * 100)}
-                        onChange={(e) => setThreshold(Number(e.target.value) / 100)}
-                        className="flex-1 h-2 accent-gray-700 cursor-pointer min-w-0"
-                      />
-                      <span className="text-xs font-medium text-gray-700 w-10 text-right tabular-nums shrink-0">
-                        {Math.round(threshold * 100)}%
-                      </span>
-                    </div>
-                  </div>
-
                   {/* Read-only fields */}
-                  <JsonViewer
-                    data={entry.fields as Fields}
-                    confidenceThreshold={threshold}
-                    editMode={false}
-                  />
+                  <JsonViewer data={entry.fields as Fields} editMode={false} />
                 </div>
               )}
             </div>
