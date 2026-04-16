@@ -21,27 +21,38 @@ Analyze the provided document image and return ONLY valid JSON with exactly thes
 - language (string): the primary language of the document text, e.g. "English", "Hindi",
   "Tamil", "Telugu". Return null if undetermined.
 - fields (object): all relevant key-value pairs extracted from the document using camelCase
-  keys. The fields should be appropriate for the detected document type. Return an empty
-  object {} if documentType is null.
+  keys. Each field must be an object with two keys:
+    - "value": the extracted value (string, number, null, or array of objects for tabular data)
+    - "confidence": a number between 0 and 1 representing how clearly this field was readable
+        1.0 = perfectly clear and unambiguous
+        0.7–0.9 = mostly readable, minor uncertainty
+        0.4–0.6 = partially readable or inferred
+        0.0–0.3 = very unclear, blurry, or heavily guessed
+  Return an empty object {} for fields if documentType is null.
 
 Rules:
 1. If the image is not a recognisable document (e.g. a photo, selfie, landscape),
    set documentType to null and fields to {}.
-2. Never hallucinate or guess values — return null for any field that is unclear or absent.
-3. Numeric fields (amounts, totals) must be numbers, not strings.
+2. Never hallucinate or guess values — set value to null and confidence to 0 if unclear.
+3. Numeric fields (amounts, totals) must have numeric values, not strings.
 4. Dates should be normalised to YYYY-MM-DD where possible; otherwise return the raw string.
 5. Do not add explanations, comments, or any keys outside the three required ones.
 6. Output must be strictly valid JSON.
 7. For tabular or repeating data (e.g. invoice line items, bank statement transactions),
-   always use a row-oriented array of objects where each object contains all columns for
-   that row. NEVER split columns into separate parallel arrays.
-   Correct:   "items": [{"description":"Widget","quantity":2,"unitPrice":50,"amount":100}]
-   Incorrect: "description":["Widget"], "quantity":[2], "unitPrice":[50], "amount":[100]`;
+   value must be a row-oriented array of objects where each object contains all columns.
+   Each row object should also include a "confidence" key for that row's overall readability.
+   Correct:   "items": { "value": [{"description":"Widget","quantity":2,"amount":100,"confidence":0.95}], "confidence": 0.95 }
+   Incorrect: "description":["Widget"], "quantity":[2]`;
+
+export interface FieldEntry {
+  value: unknown;
+  confidence: number;
+}
 
 export interface OcrResult {
   documentType: string | null;
   language: string | null;
-  fields: Record<string, unknown>;
+  fields: Record<string, FieldEntry>;
 }
 
 async function toBase64Jpeg(input: Buffer | Uint8Array): Promise<string> {
@@ -50,6 +61,24 @@ async function toBase64Jpeg(input: Buffer | Uint8Array): Promise<string> {
     .jpeg({ quality: 80 })
     .toBuffer();
   return buf.toString("base64");
+}
+
+function normalizeFields(raw: Record<string, unknown>): Record<string, FieldEntry> {
+  const out: Record<string, FieldEntry> = {};
+  for (const [key, val] of Object.entries(raw)) {
+    if (val !== null && typeof val === "object" && "value" in val && "confidence" in val) {
+      out[key] = {
+        value: (val as FieldEntry).value ?? null,
+        confidence: typeof (val as FieldEntry).confidence === "number"
+          ? Math.min(1, Math.max(0, (val as FieldEntry).confidence))
+          : 0,
+      };
+    } else {
+      // Fallback: OpenAI returned a plain value — wrap it with neutral confidence
+      out[key] = { value: val, confidence: 0.5 };
+    }
+  }
+  return out;
 }
 
 async function ocrPage(base64Image: string): Promise<OcrResult> {
@@ -75,11 +104,16 @@ async function ocrPage(base64Image: string): Promise<OcrResult> {
   const content = res.choices[0].message.content;
   if (!content) throw new Error("OpenAI returned empty content");
 
-  const parsed = JSON.parse(content) as Partial<OcrResult>;
+  const parsed = JSON.parse(content) as {
+    documentType?: string | null;
+    language?: string | null;
+    fields?: Record<string, unknown>;
+  };
+
   return {
     documentType: parsed.documentType ?? null,
     language: parsed.language ?? null,
-    fields: parsed.fields ?? {},
+    fields: normalizeFields(parsed.fields ?? {}),
   };
 }
 
@@ -90,12 +124,13 @@ function mergeResults(pages: OcrResult[]): OcrResult {
   const documentType = pages.map((p) => p.documentType).find((v) => v != null) ?? null;
   const language = pages.map((p) => p.language).find((v) => v != null) ?? null;
 
-  // Merge fields: first non-null value per key wins
-  const fields: Record<string, unknown> = {};
+  // Merge fields: highest confidence value per key wins across pages
+  const fields: Record<string, FieldEntry> = {};
   for (const page of pages) {
-    for (const [key, value] of Object.entries(page.fields)) {
-      if (!(key in fields) && value != null && value !== "") {
-        fields[key] = value;
+    for (const [key, entry] of Object.entries(page.fields)) {
+      if (entry.value == null || entry.value === "") continue;
+      if (!(key in fields) || entry.confidence > fields[key].confidence) {
+        fields[key] = entry;
       }
     }
   }
