@@ -48,7 +48,10 @@ Rules:
 
 function buildParserSystemPrompt(parser: ParserRecord): string {
   const fieldList = parser.fields
-    .map((field) => `- ${field.field}: ${field.description || "No description provided"}`)
+    .map(
+      (field) =>
+        `- ${field.field}: ${field.description || "No description provided"}`,
+    )
     .join("\n");
 
   return `You are a document OCR and structured extraction system.
@@ -88,23 +91,42 @@ export interface OcrResult {
   fields: Record<string, FieldEntry>;
 }
 
+/** Linear scale before Vision API: 0.25 ⇒ ~25% width & height (~6.25% area). */
+const VISION_IMAGE_SCALE = 0.25;
+
 async function toBase64Jpeg(input: Buffer | Uint8Array): Promise<string> {
-  const buf = await sharp(Buffer.from(input))
-    .resize({ width: 1300, withoutEnlargement: true })
-    .jpeg({ quality: 80 })
-    .toBuffer();
+  const raw = Buffer.from(input);
+  const meta = await sharp(raw).metadata();
+  const w = meta.width;
+  let pipeline = sharp(raw);
+  if (w != null && w > 0) {
+    const targetW = Math.max(1, Math.round(w * VISION_IMAGE_SCALE));
+    pipeline = pipeline.resize({ width: targetW, withoutEnlargement: true });
+  } else {
+    const fallbackW = Math.max(1, Math.round(1300 * VISION_IMAGE_SCALE));
+    pipeline = pipeline.resize({ width: fallbackW, withoutEnlargement: true });
+  }
+  const buf = await pipeline.jpeg({ quality: 80 }).toBuffer();
   return buf.toString("base64");
 }
 
-function normalizeFields(raw: Record<string, unknown>): Record<string, FieldEntry> {
+function normalizeFields(
+  raw: Record<string, unknown>,
+): Record<string, FieldEntry> {
   const out: Record<string, FieldEntry> = {};
   for (const [key, val] of Object.entries(raw)) {
-    if (val !== null && typeof val === "object" && "value" in val && "confidence" in val) {
+    if (
+      val !== null &&
+      typeof val === "object" &&
+      "value" in val &&
+      "confidence" in val
+    ) {
       out[key] = {
         value: (val as FieldEntry).value ?? null,
-        confidence: typeof (val as FieldEntry).confidence === "number"
-          ? Math.min(1, Math.max(0, (val as FieldEntry).confidence))
-          : 0,
+        confidence:
+          typeof (val as FieldEntry).confidence === "number"
+            ? Math.min(1, Math.max(0, (val as FieldEntry).confidence))
+            : 0,
       };
     } else {
       // Fallback: OpenAI returned a plain value — wrap it with neutral confidence
@@ -116,7 +138,7 @@ function normalizeFields(raw: Record<string, unknown>): Record<string, FieldEntr
 
 function applyParserFieldSchema(
   fields: Record<string, FieldEntry>,
-  parser?: ParserRecord | null
+  parser?: ParserRecord | null,
 ): Record<string, FieldEntry> {
   if (!parser) return fields;
 
@@ -130,7 +152,7 @@ function applyParserFieldSchema(
 async function ocrPage(
   base64Image: string,
   parser?: ParserRecord | null,
-  extraGuidance?: string
+  extraGuidance?: string,
 ): Promise<OcrResult> {
   let basePrompt = parser ? buildParserSystemPrompt(parser) : OCR_SYSTEM_PROMPT;
   if (extraGuidance) basePrompt = `${basePrompt}\n\n${extraGuidance}`;
@@ -144,7 +166,10 @@ async function ocrPage(
       {
         role: "user",
         content: [
-          { type: "text", text: "Extract all information from this document image." },
+          {
+            type: "text",
+            text: "Extract all information from this document image.",
+          },
           {
             type: "image_url",
             image_url: { url: `data:image/jpeg;base64,${base64Image}` },
@@ -166,7 +191,10 @@ async function ocrPage(
   return {
     documentType: parsed.documentType ?? null,
     language: parsed.language ?? null,
-    fields: applyParserFieldSchema(normalizeFields(parsed.fields ?? {}), parser),
+    fields: applyParserFieldSchema(
+      normalizeFields(parsed.fields ?? {}),
+      parser,
+    ),
   };
 }
 
@@ -174,7 +202,8 @@ function mergeResults(pages: OcrResult[]): OcrResult {
   if (pages.length === 0) throw new Error("No pages to merge");
   if (pages.length === 1) return pages[0];
 
-  const documentType = pages.map((p) => p.documentType).find((v) => v != null) ?? null;
+  const documentType =
+    pages.map((p) => p.documentType).find((v) => v != null) ?? null;
   const language = pages.map((p) => p.language).find((v) => v != null) ?? null;
 
   // Merge fields: highest confidence value per key wins across pages
@@ -205,7 +234,7 @@ const BATCH_SIZE = 5;
 async function processInBatches(
   pageBuffers: Uint8Array[],
   parser?: ParserRecord | null,
-  extraGuidance?: string
+  extraGuidance?: string,
 ): Promise<OcrResult[]> {
   const results: OcrResult[] = [];
 
@@ -215,7 +244,7 @@ async function processInBatches(
       batch.map(async (buf) => {
         const base64 = await toBase64Jpeg(buf);
         return ocrPage(base64, parser, extraGuidance);
-      })
+      }),
     );
     results.push(...batchResults);
   }
@@ -228,10 +257,12 @@ async function buildCorrectionsGuidance(): Promise<string | undefined> {
   const corrections = await getCorrectionsForPrompt(30);
   if (corrections.length === 0) return undefined;
 
-  const lines = corrections.map(({ documentType, fieldKey, originalValue, correctedValue }) => {
-    const from = originalValue != null ? `"${originalValue}"` : "(missing)";
-    return `• [${documentType}] ${fieldKey}: ${from} → "${correctedValue}"`;
-  });
+  const lines = corrections.map(
+    ({ documentType, fieldKey, originalValue, correctedValue }) => {
+      const from = originalValue != null ? `"${originalValue}"` : "(missing)";
+      return `• [${documentType}] ${fieldKey}: ${from} → "${correctedValue}"`;
+    },
+  );
 
   return (
     "User-verified corrections from similar documents — apply these patterns:\n" +
@@ -243,7 +274,7 @@ export async function extractFromFile(
   filePath: string,
   mimeType: string,
   fileName?: string,
-  parser?: ParserRecord | null
+  parser?: ParserRecord | null,
 ): Promise<OcrResult> {
   const buffer = fs.readFileSync(filePath);
 
@@ -259,9 +290,14 @@ export async function extractFromFile(
       pageBuffers.push(new Uint8Array(pageBuffer));
     }
 
-    if (pageBuffers.length === 0) throw new Error("PDF produced no renderable pages");
+    if (pageBuffers.length === 0)
+      throw new Error("PDF produced no renderable pages");
 
-    const pageResults = await processInBatches(pageBuffers, parser, extraGuidance);
+    const pageResults = await processInBatches(
+      pageBuffers,
+      parser,
+      extraGuidance,
+    );
     const merged = mergeResults(pageResults);
     return {
       ...merged,
