@@ -1,6 +1,13 @@
-import React, { useCallback, useRef, useState } from 'react'
-import { UploadCloudIcon, FileTextIcon, XIcon } from 'lucide-react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  CheckIcon,
+  ChevronDownIcon,
+  FileTextIcon,
+  UploadCloudIcon,
+  XIcon,
+} from 'lucide-react'
 import { DocumentTypeChips } from './DocumentTypeChips'
+import api from '../utils/api'
 
 const ACCEPTED = '.pdf,.jpg,.jpeg,.png,.tiff,.tif,.webp,.bmp'
 
@@ -11,15 +18,42 @@ function formatBytes(bytes: number): string {
 }
 
 interface UploadCardProps {
-  onExtract: (file: File) => void
+  onExtract: (file: File, parserId?: string) => void
   isExtracting: boolean
+}
+
+interface ParserOption {
+  id: string
+  name: string
+  documentType: string
 }
 
 export function UploadCard({ onExtract, isExtracting }: UploadCardProps) {
   const [file, setFile] = useState<File | null>(null)
   const [dragOver, setDragOver] = useState(false)
+  const [parsers, setParsers] = useState<ParserOption[]>([])
+  const [selectedParserId, setSelectedParserId] = useState('')
+  const [parserMenuOpen, setParserMenuOpen] = useState(false)
+  const parserMenuRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const dragCounterRef = useRef(0)
+
+  useEffect(() => {
+    api
+      .get<{ success: boolean; parsers?: ParserOption[] }>('/parsers')
+      .then((res) => setParsers(res.data.parsers ?? []))
+      .catch(() => setParsers([]))
+  }, [])
+
+  useEffect(() => {
+    const onDocMouseDown = (e: MouseEvent) => {
+      if (parserMenuRef.current && !parserMenuRef.current.contains(e.target as Node)) {
+        setParserMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', onDocMouseDown)
+    return () => document.removeEventListener('mousedown', onDocMouseDown)
+  }, [])
 
   const handleFile = useCallback((f: File) => setFile(f), [])
 
@@ -60,6 +94,12 @@ export function UploadCard({ onExtract, isExtracting }: UploadCardProps) {
     dragCounterRef.current = 0
     if (inputRef.current) inputRef.current.value = ''
   }
+
+  const selectedParser = parsers.find((p) => p.id === selectedParserId)
+
+  const parserTriggerLabel = selectedParser
+    ? `${selectedParser.name} · ${selectedParser.documentType}`
+    : 'Default (Extract all relevant fields)'
 
   return (
     <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 space-y-5">
@@ -127,10 +167,105 @@ export function UploadCard({ onExtract, isExtracting }: UploadCardProps) {
       {/* Document type chips */}
       <DocumentTypeChips />
 
+      <div
+        ref={parserMenuRef}
+        className="rounded-xl border border-gray-200 bg-gray-50/80 p-4 space-y-3"
+      >
+        <div>
+          <span className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+            Parser
+          </span>
+          <div className="relative">
+            <button
+              type="button"
+              id="parser-select-trigger"
+              aria-haspopup="listbox"
+              aria-expanded={parserMenuOpen}
+              onClick={() => setParserMenuOpen((o) => !o)}
+              className="flex w-full items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-left text-sm font-medium text-gray-900 shadow-sm
+                transition-colors hover:border-gray-300 hover:bg-gray-50/80
+                focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400"
+            >
+              <span className="min-w-0 truncate">{parserTriggerLabel}</span>
+              <ChevronDownIcon
+                className={`h-4 w-4 shrink-0 text-gray-400 transition-transform ${parserMenuOpen ? 'rotate-180' : ''}`}
+                aria-hidden
+              />
+            </button>
+
+            {parserMenuOpen && (
+              <ul
+                role="listbox"
+                aria-labelledby="parser-select-trigger"
+                className="absolute left-0 right-0 z-50 mt-1 max-h-60 overflow-auto rounded-xl border border-gray-200 bg-white py-1 shadow-lg ring-1 ring-black/5"
+              >
+                <li role="presentation">
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={selectedParserId === ''}
+                    onClick={() => {
+                      setSelectedParserId('')
+                      setParserMenuOpen(false)
+                    }}
+                    className={`flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm transition-colors
+                      ${selectedParserId === ''
+                        ? 'bg-indigo-50 text-indigo-900 font-medium'
+                        : 'text-gray-800 hover:bg-gray-50'
+                      }`}
+                  >
+                    {selectedParserId === '' ? (
+                      <CheckIcon className="h-4 w-4 shrink-0 text-indigo-600" aria-hidden />
+                    ) : (
+                      <span className="w-4 shrink-0" aria-hidden />
+                    )}
+                    <span className="min-w-0">Default — extract all relevant fields</span>
+                  </button>
+                </li>
+                {parsers.map((parser) => {
+                  const isSelected = parser.id === selectedParserId
+                  return (
+                    <li key={parser.id} role="presentation">
+                      <button
+                        type="button"
+                        role="option"
+                        aria-selected={isSelected}
+                        onClick={() => {
+                          setSelectedParserId(parser.id)
+                          setParserMenuOpen(false)
+                        }}
+                        className={`flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm transition-colors
+                          ${isSelected
+                            ? 'bg-indigo-50 text-indigo-900 font-medium'
+                            : 'text-gray-800 hover:bg-gray-50'
+                          }`}
+                      >
+                        {isSelected ? (
+                          <CheckIcon className="h-4 w-4 shrink-0 text-indigo-600" aria-hidden />
+                        ) : (
+                          <span className="w-4 shrink-0" aria-hidden />
+                        )}
+                        <span className="min-w-0">
+                          <span className="font-medium text-gray-900">{parser.name}</span>
+                          <span className="text-gray-500"> · {parser.documentType}</span>
+                        </span>
+                      </button>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+          </div>
+        </div>
+        <p className="text-xs text-gray-500 leading-relaxed">
+          Choose a parser to limit extraction to its field list, or use default for full generic OCR.
+        </p>
+      </div>
+
       {/* Actions */}
       <div>
         <button
-          onClick={() => file && onExtract(file)}
+          onClick={() => file && onExtract(file, selectedParserId || undefined)}
           disabled={!file || isExtracting}
           className="flex w-full items-center justify-center gap-2 px-5 py-2.5 bg-indigo-600 text-white text-sm font-medium rounded-lg
             hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"

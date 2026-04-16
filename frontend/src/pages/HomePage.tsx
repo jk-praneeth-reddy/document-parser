@@ -1,7 +1,7 @@
 import { UploadCard } from '../components/UploadCard'
 
 interface HomePageProps {
-  onExtract: (file: File) => void
+  onExtract: (file: File, parserId?: string) => void
   isExtracting: boolean
 }
 

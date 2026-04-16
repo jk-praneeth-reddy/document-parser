@@ -1,6 +1,7 @@
 import { NextFunction, Request, Response, Router } from "express";
 import { upload } from "../config/multer";
 import { extractFromFile } from "../services/ocr.service";
+import { getParser } from "../services/parser.service";
 import {
   getAllHistory,
   insertHistory,
@@ -36,6 +37,7 @@ router.post(
   },
   async (req: Request, res: Response) => {
     const file = req.file;
+    const parserId = typeof req.body?.parserId === "string" ? req.body.parserId.trim() : "";
 
     if (!file) {
       res.status(400).json({
@@ -59,7 +61,13 @@ router.post(
     }
 
     try {
-      const result = await extractFromFile(file.path, file.mimetype, file.originalname);
+      const parser = parserId ? await getParser(parserId) : null;
+      if (parserId && !parser) {
+        res.status(404).json({ success: false, error: "Selected parser not found." });
+        return;
+      }
+
+      const result = await extractFromFile(file.path, file.mimetype, file.originalname, parser);
 
       if (result.documentType === null) {
         res.status(400).json({
@@ -92,6 +100,7 @@ router.post(
         documentType: result.documentType,
         language: result.language,
         fields: result.fields,
+        parser: parser ? { id: parser.id, name: parser.name } : null,
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

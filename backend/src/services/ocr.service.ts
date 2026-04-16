@@ -1,6 +1,7 @@
 import fs from "fs";
 import OpenAI from "openai";
 import sharp from "sharp";
+import type { ParserRecord } from "./parser.service";
 
 let _openai: OpenAI | null = null;
 
@@ -44,6 +45,37 @@ Rules:
    Correct:   "items": { "value": [{"description":"Widget","quantity":2,"amount":100,"confidence":0.95}], "confidence": 0.95 }
    Incorrect: "description":["Widget"], "quantity":[2]`;
 
+function buildParserSystemPrompt(parser: ParserRecord): string {
+  const fieldList = parser.fields
+    .map((field) => `- ${field.field}: ${field.description || "No description provided"}`)
+    .join("\n");
+
+  return `You are a document OCR and structured extraction system.
+Analyze the provided document image and return ONLY valid JSON with exactly these three keys:
+
+- documentType (string): return "${parser.documentType}" when the document matches this parser. Return null if the image is not a recognisable document of this type.
+- language (string): the primary language of the document text, e.g. "English", "Hindi", "Tamil", "Telugu". Return null if undetermined.
+- fields (object): return ONLY the fields listed below, using exactly the same keys. Each field must be an object with:
+    - "value": the extracted value (string, number, null, or array of objects for tabular data)
+    - "confidence": a number between 0 and 1
+
+Parser:
+- parserName: ${parser.name}
+- expectedDocumentType: ${parser.documentType}
+- fields:
+${fieldList}
+
+Rules:
+1. If the image is not a recognisable document, set documentType to null and fields to {}.
+2. If the document is recognisable but does not match "${parser.documentType}", set documentType to null and fields to {}.
+3. Return ONLY the listed field keys in the fields object. Never add extra keys.
+4. If a listed field is missing or unclear, return that field with value null and confidence 0.
+5. Never hallucinate or guess values.
+6. Numeric fields must be numeric values, not strings.
+7. Dates should be normalised to YYYY-MM-DD where possible; otherwise return the raw string.
+8. Output must be strictly valid JSON.`;
+}
+
 export interface FieldEntry {
   value: unknown;
   confidence: number;
@@ -81,13 +113,26 @@ function normalizeFields(raw: Record<string, unknown>): Record<string, FieldEntr
   return out;
 }
 
-async function ocrPage(base64Image: string): Promise<OcrResult> {
+function applyParserFieldSchema(
+  fields: Record<string, FieldEntry>,
+  parser?: ParserRecord | null
+): Record<string, FieldEntry> {
+  if (!parser) return fields;
+
+  const shaped: Record<string, FieldEntry> = {};
+  for (const def of parser.fields) {
+    shaped[def.field] = fields[def.field] ?? { value: null, confidence: 0 };
+  }
+  return shaped;
+}
+
+async function ocrPage(base64Image: string, parser?: ParserRecord | null): Promise<OcrResult> {
   const res = await getOpenAI().chat.completions.create({
     model: "gpt-4o-mini",
     temperature: 0,
     response_format: { type: "json_object" },
     messages: [
-      { role: "system", content: OCR_SYSTEM_PROMPT },
+      { role: "system", content: parser ? buildParserSystemPrompt(parser) : OCR_SYSTEM_PROMPT },
       {
         role: "user",
         content: [
@@ -113,7 +158,7 @@ async function ocrPage(base64Image: string): Promise<OcrResult> {
   return {
     documentType: parsed.documentType ?? null,
     language: parsed.language ?? null,
-    fields: normalizeFields(parsed.fields ?? {}),
+    fields: applyParserFieldSchema(normalizeFields(parsed.fields ?? {}), parser),
   };
 }
 
@@ -149,7 +194,10 @@ function isPdf(mimeType: string, fileName?: string): boolean {
 
 const BATCH_SIZE = 5;
 
-async function processInBatches(pageBuffers: Uint8Array[]): Promise<OcrResult[]> {
+async function processInBatches(
+  pageBuffers: Uint8Array[],
+  parser?: ParserRecord | null
+): Promise<OcrResult[]> {
   const results: OcrResult[] = [];
 
   for (let i = 0; i < pageBuffers.length; i += BATCH_SIZE) {
@@ -157,7 +205,7 @@ async function processInBatches(pageBuffers: Uint8Array[]): Promise<OcrResult[]>
     const batchResults = await Promise.all(
       batch.map(async (buf) => {
         const base64 = await toBase64Jpeg(buf);
-        return ocrPage(base64);
+        return ocrPage(base64, parser);
       })
     );
     results.push(...batchResults);
@@ -166,7 +214,12 @@ async function processInBatches(pageBuffers: Uint8Array[]): Promise<OcrResult[]>
   return results;
 }
 
-export async function extractFromFile(filePath: string, mimeType: string, fileName?: string): Promise<OcrResult> {
+export async function extractFromFile(
+  filePath: string,
+  mimeType: string,
+  fileName?: string,
+  parser?: ParserRecord | null
+): Promise<OcrResult> {
   const buffer = fs.readFileSync(filePath);
 
   if (isPdf(mimeType, fileName)) {
@@ -180,10 +233,14 @@ export async function extractFromFile(filePath: string, mimeType: string, fileNa
 
     if (pageBuffers.length === 0) throw new Error("PDF produced no renderable pages");
 
-    const pageResults = await processInBatches(pageBuffers);
-    return mergeResults(pageResults);
+    const pageResults = await processInBatches(pageBuffers, parser);
+    const merged = mergeResults(pageResults);
+    return {
+      ...merged,
+      fields: applyParserFieldSchema(merged.fields, parser),
+    };
   }
 
   const base64 = await toBase64Jpeg(buffer);
-  return ocrPage(base64);
+  return ocrPage(base64, parser);
 }

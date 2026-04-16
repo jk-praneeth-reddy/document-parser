@@ -19,6 +19,10 @@ interface ExtractResult {
   documentType: string
   language: string | null
   fields: Fields
+  parser?: {
+    id: string
+    name: string
+  } | null
 }
 
 export default function App() {
@@ -37,13 +41,14 @@ export default function App() {
   const [historyRefreshKey, setHistoryRefreshKey] = useState(0)
   const refreshHistory = () => setHistoryRefreshKey((k) => k + 1)
 
-  const handleExtract = async (file: File) => {
+  const handleExtract = async (file: File, parserId?: string) => {
     setIsExtracting(true)
     setExtractError(null)
     setCurrentFile(file)
 
     const form = new FormData()
     form.append('file', file)
+    if (parserId) form.append('parserId', parserId)
 
     try {
       const res = await api.post<ExtractResult>('/ocr/extract', form, {
