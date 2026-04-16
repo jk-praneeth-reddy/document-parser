@@ -31,3 +31,6 @@ coverage/
 
 # Vite
 frontend/.vite/
+
+# Uploaded files
+backend/uploads/
