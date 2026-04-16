@@ -1,0 +1,79 @@
+import fs from "fs";
+import path from "path";
+import initSqlJs from "sql.js";
+import type { Database } from "sql.js";
+
+const DB_PATH = path.resolve(process.cwd(), "data", "history.db");
+
+let _db: Database | null = null;
+
+export async function getDb(): Promise<Database> {
+  if (_db) return _db;
+
+  const SQL = await initSqlJs();
+  const dataDir = path.dirname(DB_PATH);
+
+  if (!fs.existsSync(dataDir)) {
+    fs.mkdirSync(dataDir, { recursive: true });
+  }
+
+  if (fs.existsSync(DB_PATH)) {
+    _db = new SQL.Database(fs.readFileSync(DB_PATH));
+  } else {
+    _db = new SQL.Database();
+  }
+
+  _db.run(`
+    CREATE TABLE IF NOT EXISTS history (
+      id          TEXT PRIMARY KEY,
+      original_name TEXT NOT NULL,
+      saved_as    TEXT NOT NULL DEFAULT '',
+      mime_type   TEXT NOT NULL,
+      size        INTEGER NOT NULL,
+      document_type TEXT,
+      language    TEXT,
+      fields      TEXT NOT NULL,
+      extracted_at TEXT NOT NULL
+    )
+  `);
+
+  // Migration: add saved_as column to tables created before this column existed
+  try {
+    _db.run("ALTER TABLE history ADD COLUMN saved_as TEXT NOT NULL DEFAULT ''");
+  } catch {
+    // Column already exists — safe to ignore
+  }
+
+  _db.run(`
+    CREATE TABLE IF NOT EXISTS parsers (
+      id             TEXT PRIMARY KEY,
+      name           TEXT NOT NULL,
+      description    TEXT NOT NULL DEFAULT '',
+      document_type  TEXT NOT NULL,
+      field_defs     TEXT NOT NULL,
+      created_at     TEXT NOT NULL
+    )
+  `);
+
+  // Corrections table: every field value changed by a human reviewer
+  _db.run(`
+    CREATE TABLE IF NOT EXISTS corrections (
+      id             TEXT PRIMARY KEY,
+      history_id     TEXT NOT NULL,
+      document_type  TEXT NOT NULL,
+      field_key      TEXT NOT NULL,
+      original_value TEXT,
+      corrected_value TEXT NOT NULL,
+      corrected_at   TEXT NOT NULL,
+      FOREIGN KEY (history_id) REFERENCES history(id)
+    )
+  `);
+
+  persistDb(_db);
+  return _db;
+}
+
+export function persistDb(db: Database): void {
+  const data = db.export();
+  fs.writeFileSync(DB_PATH, Buffer.from(data));
+}
