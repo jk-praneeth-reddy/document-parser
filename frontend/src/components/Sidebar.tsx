@@ -1,6 +1,6 @@
-import { HomeIcon, Braces, ClockIcon, ScanLineIcon } from 'lucide-react'
+import { HomeIcon, Braces, ClockIcon, ScanLineIcon, BarChart3Icon } from 'lucide-react'
 
-export type Page = 'home' | 'results' | 'parser' | 'history' | 'history-detail'
+export type Page = 'home' | 'results' | 'parser' | 'quality' | 'history' | 'history-detail'
 
 interface SidebarProps {
   activePage: Page
@@ -10,11 +10,17 @@ interface SidebarProps {
 const navItems = [
   { id: 'home' as Page, label: 'Home', icon: HomeIcon },
   { id: 'parser' as Page, label: 'Parser', icon: Braces },
+  { id: 'quality' as Page, label: 'Quality', icon: BarChart3Icon },
   { id: 'history' as Page, label: 'History', icon: ClockIcon },
 ]
 
 export function Sidebar({ activePage, onNavigate }: SidebarProps) {
-  const activeNav = activePage === 'results' ? 'home' : activePage === 'history-detail' ? 'history' : activePage
+  const activeNav =
+    activePage === 'results'
+      ? 'home'
+      : activePage === 'history-detail'
+        ? 'history'
+        : activePage
 
   return (
     <aside className="w-56 flex-shrink-0 bg-white border-r border-gray-200 flex flex-col h-screen sticky top-0">

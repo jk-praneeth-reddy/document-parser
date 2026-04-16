@@ -3,6 +3,7 @@ import { Sidebar, type Page } from './components/Sidebar'
 import { HomePage } from './pages/HomePage'
 import { ResultsPage } from './pages/ResultsPage'
 import { ParserPage } from './pages/ParserPage'
+import { QualityPage } from './pages/QualityPage'
 import { HistoryPage, type HistoryEntry } from './pages/HistoryPage'
 import { HistoryDetailPage } from './pages/HistoryDetailPage'
 import type { Fields } from './components/JsonViewer'
@@ -110,6 +111,9 @@ export default function App() {
 
         {/* Parser page */}
         {page === 'parser' && <ParserPage />}
+
+        {/* Quality / correction metrics */}
+        {page === 'quality' && <QualityPage refreshKey={historyRefreshKey} />}
 
         {/* History list */}
         {page === 'history' && (

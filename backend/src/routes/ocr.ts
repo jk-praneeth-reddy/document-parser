@@ -7,6 +7,7 @@ import {
   getAllCorrections,
   getAllHistory,
   generateFineTuneExport,
+  getCorrectionMetrics,
   getHistoryById,
   insertHistory,
   recordCorrections,
@@ -114,6 +115,17 @@ router.post(
     }
   }
 );
+
+// GET /api/ocr/metrics  – human-correction quality stats
+router.get("/metrics", async (_req: Request, res: Response) => {
+  try {
+    const metrics = await getCorrectionMetrics();
+    res.json({ success: true, metrics });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ success: false, error: "Failed to compute metrics.", detail: message });
+  }
+});
 
 // GET /api/ocr/history
 router.get("/history", async (_req: Request, res: Response) => {

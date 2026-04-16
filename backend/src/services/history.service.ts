@@ -197,6 +197,122 @@ export async function getAllCorrections(): Promise<CorrectionEntry[]> {
   });
 }
 
+/** Aggregated quality metrics derived from human field corrections. */
+export interface DocumentTypeQualityMetrics {
+  documentType: string;
+  extractions: number;
+  documentsWithCorrections: number;
+  correctionEvents: number;
+  /** % of extractions of this type where the user changed at least one field */
+  documentEditRatePercent: number;
+  /** Mean correction rows per extraction (proxy for field-level churn) */
+  avgCorrectionsPerExtraction: number;
+}
+
+export interface CorrectionMetrics {
+  totalExtractions: number;
+  totalCorrectionEvents: number;
+  documentsWithCorrections: number;
+  documentEditRatePercent: number;
+  avgCorrectionsPerExtraction: number;
+  avgCorrectionsAmongEditedDocs: number | null;
+  byDocumentType: DocumentTypeQualityMetrics[];
+}
+
+function sqlScalar(db: Awaited<ReturnType<typeof getDb>>, sql: string): number {
+  const result = db.exec(sql);
+  if (!result.length || !result[0].values.length) return 0;
+  return Number(result[0].values[0][0]);
+}
+
+/** Human-in-the-loop stats: correction counts and edit rates (not gold-label accuracy). */
+export async function getCorrectionMetrics(): Promise<CorrectionMetrics> {
+  const db = await getDb();
+
+  const totalExtractions = sqlScalar(db, "SELECT COUNT(*) FROM history");
+  const totalCorrectionEvents = sqlScalar(db, "SELECT COUNT(*) FROM corrections");
+  const documentsWithCorrections = sqlScalar(db, "SELECT COUNT(DISTINCT history_id) FROM corrections");
+
+  const documentEditRatePercent =
+    totalExtractions > 0
+      ? Math.round((documentsWithCorrections / totalExtractions) * 10000) / 100
+      : 0;
+  const avgCorrectionsPerExtraction =
+    totalExtractions > 0
+      ? Math.round((totalCorrectionEvents / totalExtractions) * 1000) / 1000
+      : 0;
+  const avgCorrectionsAmongEditedDocs =
+    documentsWithCorrections > 0
+      ? Math.round((totalCorrectionEvents / documentsWithCorrections) * 1000) / 1000
+      : null;
+
+  const extResult = db.exec(
+    `SELECT document_type, COUNT(*) AS cnt
+       FROM history
+      WHERE document_type IS NOT NULL AND TRIM(document_type) != ''
+      GROUP BY document_type`
+  );
+  const extByType = new Map<string, number>();
+  if (extResult.length && extResult[0].values.length) {
+    const { columns, values } = extResult[0];
+    for (const row of values) {
+      const o = Object.fromEntries(columns.map((c, i) => [c, row[i]]));
+      extByType.set(String(o.document_type), Number(o.cnt));
+    }
+  }
+
+  const corrResult = db.exec(
+    `SELECT document_type,
+            COUNT(*) AS events,
+            COUNT(DISTINCT history_id) AS docs
+       FROM corrections
+      GROUP BY document_type`
+  );
+  const corrByType = new Map<string, { events: number; docs: number }>();
+  if (corrResult.length && corrResult[0].values.length) {
+    const { columns, values } = corrResult[0];
+    for (const row of values) {
+      const o = Object.fromEntries(columns.map((c, i) => [c, row[i]]));
+      corrByType.set(String(o.document_type), {
+        events: Number(o.events),
+        docs: Number(o.docs),
+      });
+    }
+  }
+
+  const allTypes = new Set<string>([...extByType.keys(), ...corrByType.keys()]);
+  const byDocumentType: DocumentTypeQualityMetrics[] = [...allTypes].map((documentType) => {
+    const extractions = extByType.get(documentType) ?? 0;
+    const c = corrByType.get(documentType);
+    const correctionEvents = c?.events ?? 0;
+    const docsWithCorr = c?.docs ?? 0;
+    const documentEditRatePercentType =
+      extractions > 0 ? Math.round((docsWithCorr / extractions) * 10000) / 100 : 0;
+    const avgCorrectionsPerExtractionType =
+      extractions > 0 ? Math.round((correctionEvents / extractions) * 1000) / 1000 : 0;
+    return {
+      documentType,
+      extractions,
+      documentsWithCorrections: docsWithCorr,
+      correctionEvents,
+      documentEditRatePercent: documentEditRatePercentType,
+      avgCorrectionsPerExtraction: avgCorrectionsPerExtractionType,
+    };
+  });
+
+  byDocumentType.sort((a, b) => b.correctionEvents - a.correctionEvents);
+
+  return {
+    totalExtractions,
+    totalCorrectionEvents,
+    documentsWithCorrections,
+    documentEditRatePercent,
+    avgCorrectionsPerExtraction,
+    avgCorrectionsAmongEditedDocs,
+    byDocumentType,
+  };
+}
+
 /**
  * Generates JSONL lines in OpenAI fine-tuning format.
  * Only includes image (non-PDF) history entries that have at least one correction.
