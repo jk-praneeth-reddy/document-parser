@@ -109,27 +109,26 @@ export function ResultPanel({ result, onFieldsSaved }: ResultPanelProps) {
         </div>
 
         {/* Controls row */}
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          {/* Confidence slider */}
-          <div className="flex items-center gap-3 flex-1 min-w-[200px]">
-            <label className="text-xs font-medium text-gray-600 whitespace-nowrap">
-              Min confidence:
-            </label>
-            <input
-              type="range"
-              min={0}
-              max={100}
-              value={Math.round(threshold * 100)}
-              onChange={(e) => setThreshold(Number(e.target.value) / 100)}
-              className="flex-1 h-1.5 accent-indigo-600 cursor-pointer"
-            />
-            <span className="text-xs font-semibold text-indigo-600 w-10 text-right tabular-nums">
-              {Math.round(threshold * 100)}%
-            </span>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-stretch sm:justify-between sm:gap-4">
+          <div className="w-full sm:flex-1 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
+            <div className="flex items-center gap-3 min-h-[2rem]">
+              <span className="text-xs font-medium text-gray-600 shrink-0">Min confidence</span>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={Math.round(threshold * 100)}
+                onChange={(e) => setThreshold(Number(e.target.value) / 100)}
+                className="flex-1 h-2 accent-gray-700 cursor-pointer min-w-0"
+              />
+              <span className="text-xs font-medium text-gray-700 w-10 text-right tabular-nums shrink-0">
+                {Math.round(threshold * 100)}%
+              </span>
+            </div>
           </div>
 
           {/* Edit / Save / Cancel */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 sm:shrink-0">
             {editMode ? (
               <>
                 <button

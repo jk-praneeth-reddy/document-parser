@@ -64,7 +64,7 @@ function ValueCell({
         type="text"
         defaultValue={displayVal}
         onBlur={(e) => onFieldChange?.(fieldKey, e.target.value)}
-        className="w-full border border-indigo-300 rounded-md px-2 py-1 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-indigo-50"
+        className="w-full border border-gray-300 rounded-md px-2 py-1 text-sm text-gray-800 bg-white focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-gray-400"
         onClick={(e) => e.stopPropagation()}
       />
     )
@@ -140,7 +140,7 @@ function FieldsTable({
         <tbody className="divide-y divide-gray-100">
           {Object.entries(fields).map(([key, entry]) => (
             <tr key={key} className="hover:bg-gray-50 transition-colors">
-              <td className="px-4 py-3 font-mono text-xs text-indigo-700 font-medium align-top">
+              <td className="px-4 py-3 font-mono text-xs text-gray-600 align-top">
                 {key}
               </td>
               <td className="px-4 py-3 text-gray-800 align-top max-w-xs">
@@ -153,13 +153,15 @@ function FieldsTable({
               </td>
               <td className="px-4 py-3 align-top">
                 <div className="flex items-center gap-2">
-                  <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden min-w-[48px]">
+                  <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden min-w-[48px]">
                     <div
                       className={`h-full rounded-full transition-all ${confidenceColor(entry.confidence)}`}
                       style={{ width: `${Math.round(entry.confidence * 100)}%` }}
                     />
                   </div>
-                  <span className={`text-xs font-medium whitespace-nowrap ${confidenceTextColor(entry.confidence)}`}>
+                  <span
+                    className={`text-xs font-medium tabular-nums whitespace-nowrap ${confidenceTextColor(entry.confidence)}`}
+                  >
                     {Math.round(entry.confidence * 100)}%
                   </span>
                 </div>
@@ -177,12 +179,12 @@ function highlight(json: string): string {
     /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+-]?\d+)?)/g,
     (match) => {
       if (/^"/.test(match)) {
-        if (/:$/.test(match)) return `<span class="text-indigo-400 font-medium">${match}</span>`
-        return `<span class="text-emerald-400">${match}</span>`
+        if (/:$/.test(match)) return `<span class="text-gray-400">${match}</span>`
+        return `<span class="text-gray-200">${match}</span>`
       }
-      if (/true|false/.test(match)) return `<span class="text-amber-400">${match}</span>`
+      if (/true|false/.test(match)) return `<span class="text-gray-500">${match}</span>`
       if (/null/.test(match)) return `<span class="text-gray-500">${match}</span>`
-      return `<span class="text-sky-400">${match}</span>`
+      return `<span class="text-gray-300">${match}</span>`
     }
   )
 }

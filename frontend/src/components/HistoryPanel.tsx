@@ -136,21 +136,21 @@ export function HistoryPanel({ refreshKey }: HistoryPanelProps) {
                   </div>
 
                   {/* Confidence slider for history view */}
-                  <div className="flex items-center gap-3">
-                    <label className="text-xs font-medium text-gray-600 whitespace-nowrap">
-                      Min confidence:
-                    </label>
-                    <input
-                      type="range"
-                      min={0}
-                      max={100}
-                      value={Math.round(threshold * 100)}
-                      onChange={(e) => setThreshold(Number(e.target.value) / 100)}
-                      className="flex-1 h-1.5 accent-indigo-600 cursor-pointer max-w-xs"
-                    />
-                    <span className="text-xs font-semibold text-indigo-600 w-10 text-right tabular-nums">
-                      {Math.round(threshold * 100)}%
-                    </span>
+                  <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
+                    <div className="flex items-center gap-3 min-h-[2rem]">
+                      <span className="text-xs font-medium text-gray-600 shrink-0">Min confidence</span>
+                      <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        value={Math.round(threshold * 100)}
+                        onChange={(e) => setThreshold(Number(e.target.value) / 100)}
+                        className="flex-1 h-2 accent-gray-700 cursor-pointer min-w-0"
+                      />
+                      <span className="text-xs font-medium text-gray-700 w-10 text-right tabular-nums shrink-0">
+                        {Math.round(threshold * 100)}%
+                      </span>
+                    </div>
                   </div>
 
                   {/* Read-only fields */}
