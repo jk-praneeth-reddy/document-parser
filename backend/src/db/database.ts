@@ -44,6 +44,17 @@ export async function getDb(): Promise<Database> {
     // Column already exists — safe to ignore
   }
 
+  _db.run(`
+    CREATE TABLE IF NOT EXISTS parsers (
+      id             TEXT PRIMARY KEY,
+      name           TEXT NOT NULL,
+      description    TEXT NOT NULL DEFAULT '',
+      document_type  TEXT NOT NULL,
+      field_defs     TEXT NOT NULL,
+      created_at     TEXT NOT NULL
+    )
+  `);
+
   persistDb(_db);
   return _db;
 }

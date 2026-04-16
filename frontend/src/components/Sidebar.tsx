@@ -1,4 +1,4 @@
-import { HomeIcon, ZapIcon, ClockIcon, ScanLineIcon } from 'lucide-react'
+import { HomeIcon, Braces, ClockIcon, ScanLineIcon } from 'lucide-react'
 
 export type Page = 'home' | 'results' | 'parser' | 'history' | 'history-detail'
 
@@ -9,7 +9,7 @@ interface SidebarProps {
 
 const navItems = [
   { id: 'home' as Page, label: 'Home', icon: HomeIcon },
-  { id: 'parser' as Page, label: 'Parser', icon: ZapIcon },
+  { id: 'parser' as Page, label: 'Parser', icon: Braces },
   { id: 'history' as Page, label: 'History', icon: ClockIcon },
 ]
 
