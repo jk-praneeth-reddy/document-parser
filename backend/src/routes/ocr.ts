@@ -1,10 +1,15 @@
 import { NextFunction, Request, Response, Router } from "express";
+import { UPLOADS_DIR } from "../config/multer";
 import { upload } from "../config/multer";
-import { extractFromFile } from "../services/ocr.service";
+import { extractFromFile, OCR_SYSTEM_PROMPT } from "../services/ocr.service";
 import { getParser } from "../services/parser.service";
 import {
+  getAllCorrections,
   getAllHistory,
+  generateFineTuneExport,
+  getHistoryById,
   insertHistory,
+  recordCorrections,
   updateHistoryFields,
 } from "../services/history.service";
 import type { FieldEntry } from "../services/ocr.service";
@@ -132,15 +137,59 @@ router.patch("/history/:id", async (req: Request, res: Response) => {
   }
 
   try {
+    // Load existing entry so we can diff old vs new values
+    const existing = await getHistoryById(id);
+    if (!existing) {
+      res.status(404).json({ success: false, error: "History entry not found." });
+      return;
+    }
+
     const updated = await updateHistoryFields(id, fields);
     if (!updated) {
       res.status(404).json({ success: false, error: "History entry not found." });
       return;
     }
+
+    // Record every changed value as a correction for the feedback loop
+    if (existing.documentType) {
+      await recordCorrections(id, existing.documentType, existing.fields, fields);
+    }
+
     res.json({ success: true });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     res.status(500).json({ success: false, error: "Failed to update fields.", detail: message });
+  }
+});
+
+// GET /api/ocr/corrections  – list all recorded corrections
+router.get("/corrections", async (_req: Request, res: Response) => {
+  try {
+    const corrections = await getAllCorrections();
+    res.json({ success: true, corrections });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ success: false, error: "Failed to fetch corrections.", detail: message });
+  }
+});
+
+// GET /api/ocr/corrections/export  – download OpenAI fine-tuning JSONL
+router.get("/corrections/export", async (_req: Request, res: Response) => {
+  try {
+    const lines = await generateFineTuneExport(UPLOADS_DIR, OCR_SYSTEM_PROMPT);
+    if (lines.length === 0) {
+      res.status(404).json({
+        success: false,
+        error: "No corrected image documents found. Edit and save at least one extraction first.",
+      });
+      return;
+    }
+    res.setHeader("Content-Type", "application/x-ndjson");
+    res.setHeader("Content-Disposition", 'attachment; filename="finetune.jsonl"');
+    res.send(lines.join("\n"));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ success: false, error: "Export failed.", detail: message });
   }
 });
 

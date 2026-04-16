@@ -2,6 +2,7 @@ import fs from "fs";
 import OpenAI from "openai";
 import sharp from "sharp";
 import type { ParserRecord } from "./parser.service";
+import { getCorrectionsForPrompt } from "./history.service";
 
 let _openai: OpenAI | null = null;
 
@@ -12,7 +13,7 @@ function getOpenAI(): OpenAI {
   return _openai;
 }
 
-const OCR_SYSTEM_PROMPT = `You are a document OCR and classification system.
+export const OCR_SYSTEM_PROMPT = `You are a document OCR and classification system.
 Analyze the provided document image and return ONLY valid JSON with exactly these three keys:
 
 - documentType (string): the type of document detected, e.g. "invoice", "aadhaar_card",
@@ -126,13 +127,20 @@ function applyParserFieldSchema(
   return shaped;
 }
 
-async function ocrPage(base64Image: string, parser?: ParserRecord | null): Promise<OcrResult> {
+async function ocrPage(
+  base64Image: string,
+  parser?: ParserRecord | null,
+  extraGuidance?: string
+): Promise<OcrResult> {
+  let basePrompt = parser ? buildParserSystemPrompt(parser) : OCR_SYSTEM_PROMPT;
+  if (extraGuidance) basePrompt = `${basePrompt}\n\n${extraGuidance}`;
+
   const res = await getOpenAI().chat.completions.create({
     model: "gpt-4o-mini",
     temperature: 0,
     response_format: { type: "json_object" },
     messages: [
-      { role: "system", content: parser ? buildParserSystemPrompt(parser) : OCR_SYSTEM_PROMPT },
+      { role: "system", content: basePrompt },
       {
         role: "user",
         content: [
@@ -196,7 +204,8 @@ const BATCH_SIZE = 5;
 
 async function processInBatches(
   pageBuffers: Uint8Array[],
-  parser?: ParserRecord | null
+  parser?: ParserRecord | null,
+  extraGuidance?: string
 ): Promise<OcrResult[]> {
   const results: OcrResult[] = [];
 
@@ -205,13 +214,29 @@ async function processInBatches(
     const batchResults = await Promise.all(
       batch.map(async (buf) => {
         const base64 = await toBase64Jpeg(buf);
-        return ocrPage(base64, parser);
+        return ocrPage(base64, parser, extraGuidance);
       })
     );
     results.push(...batchResults);
   }
 
   return results;
+}
+
+/** Builds a compact guidance block from stored human corrections. */
+async function buildCorrectionsGuidance(): Promise<string | undefined> {
+  const corrections = await getCorrectionsForPrompt(30);
+  if (corrections.length === 0) return undefined;
+
+  const lines = corrections.map(({ documentType, fieldKey, originalValue, correctedValue }) => {
+    const from = originalValue != null ? `"${originalValue}"` : "(missing)";
+    return `• [${documentType}] ${fieldKey}: ${from} → "${correctedValue}"`;
+  });
+
+  return (
+    "User-verified corrections from similar documents — apply these patterns:\n" +
+    lines.join("\n")
+  );
 }
 
 export async function extractFromFile(
@@ -221,6 +246,9 @@ export async function extractFromFile(
   parser?: ParserRecord | null
 ): Promise<OcrResult> {
   const buffer = fs.readFileSync(filePath);
+
+  // Load human-correction guidance once per extraction
+  const extraGuidance = await buildCorrectionsGuidance();
 
   if (isPdf(mimeType, fileName)) {
     const { pdf } = await import("pdf-to-img");
@@ -233,7 +261,7 @@ export async function extractFromFile(
 
     if (pageBuffers.length === 0) throw new Error("PDF produced no renderable pages");
 
-    const pageResults = await processInBatches(pageBuffers, parser);
+    const pageResults = await processInBatches(pageBuffers, parser, extraGuidance);
     const merged = mergeResults(pageResults);
     return {
       ...merged,
@@ -242,5 +270,5 @@ export async function extractFromFile(
   }
 
   const base64 = await toBase64Jpeg(buffer);
-  return ocrPage(base64, parser);
+  return ocrPage(base64, parser, extraGuidance);
 }

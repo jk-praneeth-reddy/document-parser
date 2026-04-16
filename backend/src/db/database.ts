@@ -55,6 +55,20 @@ export async function getDb(): Promise<Database> {
     )
   `);
 
+  // Corrections table: every field value changed by a human reviewer
+  _db.run(`
+    CREATE TABLE IF NOT EXISTS corrections (
+      id             TEXT PRIMARY KEY,
+      history_id     TEXT NOT NULL,
+      document_type  TEXT NOT NULL,
+      field_key      TEXT NOT NULL,
+      original_value TEXT,
+      corrected_value TEXT NOT NULL,
+      corrected_at   TEXT NOT NULL,
+      FOREIGN KEY (history_id) REFERENCES history(id)
+    )
+  `);
+
   persistDb(_db);
   return _db;
 }
